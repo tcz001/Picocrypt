@@ -54,7 +54,7 @@ import (
 	"golang.org/x/crypto/sha3"
 
 	// UI
-	"github.com/HACKERALERT/giu" //v0.5.7-0.20211216020632-65de69857557
+	"github.com/AllenDang/giu"
 
 	// Reed-Solomon
 	"github.com/HACKERALERT/infectious" //v0.0.0-20211215232025-9d20874ad4b1
@@ -82,14 +82,18 @@ type locale struct {
 }
 
 var locales []locale
-var selectedLocale = "en"
+var selectedLocale = "zh"
 var allLocales = []string{
-	"en",
+	"zh",
 }
 var languages = []string{
-	"English",
+	"中文",
 }
 var languageSelected int32
+type LocalePrompts struct {
+    encryptionTab string `json:"encryptionTab,omitempty"`
+}
+var currentLocale LocalePrompts
 
 // Generic variables
 var version = "v1.22"
@@ -107,7 +111,7 @@ var onlyFolders []string
 var allFiles []string
 
 // Input file variables
-var inputLabel = "Drop files and folders into this window."
+var inputLabel = "在这里拖入需要加密/解密的文件"
 var inputFile string
 
 // Password variables
@@ -115,7 +119,7 @@ var password string
 var cPassword string
 var passwordStrength int
 var passwordState = giu.InputTextFlagsPassword
-var passwordStateLabel = "Show"
+var passwordStateLabel = "显示密码"
 
 // Password generator variables
 var showGenpass = false
@@ -130,12 +134,12 @@ var genpassSymbols = true
 var keyfile bool
 var keyfiles []string
 var keyfileOrderMatters bool
-var keyfilePrompt = "None selected."
+var keyfilePrompt = "未选中"
 var showKeyfile bool
 
 // Metadata variables
 var metadata string
-var metadataPrompt = "Metadata:"
+var metadataPrompt = "元数据:"
 var metadataDisabled bool
 
 // Advanced options
@@ -158,7 +162,7 @@ var kept bool
 var outputFile string
 
 // Status variables
-var mainStatus = "Ready."
+var mainStatus = "准备就绪"
 var mainStatusColor = color.RGBA{0xff, 0xff, 0xff, 0xff}
 var popupStatus string
 
@@ -209,14 +213,14 @@ func draw() {
 			w, _ := giu.CalcTextSize(languages[languageSelected])
 			giu.Row(
 				giu.Dummy(-w/dpi-34, 0),
-				giu.Combo("##language", languages[languageSelected], languages, &languageSelected).OnChange(func() {
+				giu.Combo("##语言", languages[languageSelected], languages, &languageSelected).OnChange(func() {
 					selectedLocale = allLocales[languageSelected]
 				}).Size(w/dpi+26),
 			).Build()
 			giu.SetCursorPos(pos)
 
 			giu.TabBar().TabItems(
-				giu.TabItem(s("Encryption")).Layout(
+				giu.TabItem(s("加密/解密")).Layout(
 					giu.Custom(func() {
 						if giu.IsItemActive() {
 							tab = 0
@@ -225,23 +229,23 @@ func draw() {
 
 					giu.Custom(func() {
 						if showGenpass {
-							giu.PopupModal(s("Generate password:")).
+							giu.PopupModal(s("生成密码:")).
 								Flags(giu.WindowFlagsNoMove|giu.WindowFlagsNoResize).Layout(
 								giu.Row(
-									giu.Label(s("Length:")),
+									giu.Label(s("长度:")),
 									giu.SliderInt(&genpassLength, 4, 64).Size(giu.Auto),
 								),
-								giu.Checkbox(s("Uppercase"), &genpassUpper),
-								giu.Checkbox(s("Lowercase"), &genpassLower),
-								giu.Checkbox(s("Numbers"), &genpassNums),
-								giu.Checkbox(s("Symbols"), &genpassSymbols),
-								giu.Checkbox(s("Copy to clipboard"), &genpassCopy),
+								giu.Checkbox(s("大写"), &genpassUpper),
+								giu.Checkbox(s("小写"), &genpassLower),
+								giu.Checkbox(s("数字"), &genpassNums),
+								giu.Checkbox(s("特殊符号"), &genpassSymbols),
+								giu.Checkbox(s("拷贝到剪贴板"), &genpassCopy),
 								giu.Row(
-									giu.Button(s("Cancel")).Size(100, 0).OnClick(func() {
+									giu.Button(s("取消")).Size(100, 0).OnClick(func() {
 										giu.CloseCurrentPopup()
 										showGenpass = false
 									}),
-									giu.Button(s("Generate")).Size(100, 0).OnClick(func() {
+									giu.Button(s("生成")).Size(100, 0).OnClick(func() {
 										tmp := genPassword()
 										password = tmp
 										cPassword = tmp
@@ -252,22 +256,22 @@ func draw() {
 									}),
 								),
 							).Build()
-							giu.OpenPopup(s("Generate password:"))
+							giu.OpenPopup(s("生成密码:"))
 							giu.Update()
 						}
 					}),
 
 					giu.Custom(func() {
 						if showKeyfile {
-							giu.PopupModal(s("Manage keyfiles:")).
+							giu.PopupModal(s("管理秘钥:")).
 								Flags(giu.WindowFlagsNoMove|giu.WindowFlagsNoResize|giu.WindowFlagsAlwaysAutoResize).Layout(
-								giu.Label(s("Drag and drop your keyfiles here.")),
+								giu.Label(s("将秘钥文件拖动到这里.")),
 								giu.Custom(func() {
 									if mode != "decrypt" {
-										giu.Checkbox(s("Require correct keyfile order"), &keyfileOrderMatters).Build()
-										giu.Tooltip(s("If checked, you will need to drop keyfiles in the correct order.")).Build()
+										giu.Checkbox(s("需要正确的秘钥文件顺序"), &keyfileOrderMatters).Build()
+										giu.Tooltip(s("如选择此选项，你需要按正确顺序拖入秘钥文件")).Build()
 									} else if keyfileOrderMatters {
-										giu.Label(s("The correct order of keyfiles is required.")).Build()
+										giu.Label(s("需要正确的秘钥文件顺序")).Build()
 									}
 								}),
 
@@ -283,11 +287,9 @@ func draw() {
 												}
 												keyfiles = tmp
 												if len(keyfiles) == 0 {
-													keyfilePrompt = s("None selected.")
-												} else if len(keyfiles) == 1 {
-													keyfilePrompt = s("Using 1 keyfile.")
+													keyfilePrompt = s("未选中")
 												} else {
-													keyfilePrompt = fmt.Sprintf(s("Using %d keyfiles."), len(keyfiles))
+													keyfilePrompt = fmt.Sprintf(s("使用 %d 个秘钥文件"), len(keyfiles))
 												}
 											}),
 											giu.Label(filepath.Base(i)),
@@ -296,33 +298,33 @@ func draw() {
 									}
 								}),
 								giu.Row(
-									giu.Button(s("Clear")).Size(150, 0).OnClick(func() {
+									giu.Button(s("清除")).Size(150, 0).OnClick(func() {
 										keyfiles = nil
-										keyfilePrompt = s("None selected.")
+										keyfilePrompt = s("未选中.")
 									}),
-									giu.Tooltip(s("Remove all keyfiles.")),
-									giu.Button(s("Done")).Size(150, 0).OnClick(func() {
+									giu.Tooltip(s("清除所有秘钥文件")),
+									giu.Button(s("完成")).Size(150, 0).OnClick(func() {
 										giu.CloseCurrentPopup()
 										showKeyfile = false
 									}),
 								),
 							).Build()
-							giu.OpenPopup(s("Manage keyfiles:"))
+							giu.OpenPopup(s("管理秘钥文件:"))
 							giu.Update()
 						}
 					}),
 
 					giu.Custom(func() {
 						if showConfirmation {
-							giu.PopupModal(s("Warning:")).
+							giu.PopupModal(s("警告:")).
 								Flags(giu.WindowFlagsNoMove|giu.WindowFlagsNoResize).Layout(
-								giu.Label(s("Output already exists. Overwrite?")),
+								giu.Label(s("输出已存在，是否覆盖?")),
 								giu.Row(
-									giu.Button(s("No")).Size(100, 0).OnClick(func() {
+									giu.Button(s("取消")).Size(100, 0).OnClick(func() {
 										giu.CloseCurrentPopup()
 										showConfirmation = false
 									}),
-									giu.Button(s("Yes")).Size(100, 0).OnClick(func() {
+									giu.Button(s("确认")).Size(100, 0).OnClick(func() {
 										giu.CloseCurrentPopup()
 										showConfirmation = false
 										showProgress = true
@@ -337,7 +339,7 @@ func draw() {
 									}),
 								),
 							).Build()
-							giu.OpenPopup(s("Warning:"))
+							giu.OpenPopup(s("警告:"))
 							giu.Update()
 						}
 					}),
@@ -353,7 +355,7 @@ func draw() {
 								}),
 								giu.Row(
 									giu.ProgressBar(progress).Size(280, 0).Overlay(progressInfo),
-									giu.Button(s("Cancel")).Size(58, 0).OnClick(func() {
+									giu.Button(s("取消")).Size(58, 0).OnClick(func() {
 										working = false
 									}),
 								),
@@ -367,14 +369,14 @@ func draw() {
 					giu.Row(
 						giu.Label(inputLabel),
 						giu.Custom(func() {
-							bw, _ := giu.CalcTextSize(s("Clear"))
+							bw, _ := giu.CalcTextSize(s("清除"))
 							p, _ := giu.GetWindowPadding()
 							bw += p * 2
 							giu.Dummy(float32(float64(-(bw+p)/dpi)), 0).Build()
 							giu.SameLine()
 							giu.Style().SetDisabled(len(allFiles) == 0 && len(onlyFiles) == 0).To(
-								giu.Button(s("Clear")).Size(bw/dpi, 0).OnClick(resetUI),
-								giu.Tooltip(s("Clear all input files and reset UI state.")),
+								giu.Button(s("清除")).Size(bw/dpi, 0).OnClick(resetUI),
+								giu.Tooltip(s("清除所有文件并恢复UI状态")),
 							).Build()
 						}),
 					),
@@ -383,33 +385,33 @@ func draw() {
 
 					giu.Style().SetDisabled(len(allFiles) == 0 && len(onlyFiles) == 0).To(
 						giu.Row(
-							giu.Label(s("Password:")),
+							giu.Label(s("密码:")),
 							giu.Dummy(-124, 0),
 							giu.Style().SetDisabled(mode == "decrypt" && !keyfile).To(
-								giu.Label(s("Keyfiles:")),
+								giu.Label(s("秘钥文件:")),
 							),
 						),
 						giu.Row(
 							giu.Button(s(passwordStateLabel)).Size(54, 0).OnClick(func() {
 								if passwordState == giu.InputTextFlagsPassword {
 									passwordState = giu.InputTextFlagsNone
-									passwordStateLabel = "Hide"
+									passwordStateLabel = "隐藏"
 								} else {
 									passwordState = giu.InputTextFlagsPassword
-									passwordStateLabel = "Show"
+									passwordStateLabel = "显示"
 								}
 							}),
 
-							giu.Button(s("Clear")).Size(54, 0).OnClick(func() {
+							giu.Button(s("清除")).Size(54, 0).OnClick(func() {
 								password = ""
 								cPassword = ""
 							}),
 
-							giu.Button(s("Copy")).Size(54, 0).OnClick(func() {
+							giu.Button(s("复制")).Size(54, 0).OnClick(func() {
 								clipboard.WriteAll(password)
 							}),
 
-							giu.Button(s("Paste")).Size(54, 0).OnClick(func() {
+							giu.Button(s("粘贴")).Size(54, 0).OnClick(func() {
 								tmp, _ := clipboard.ReadAll()
 								password = tmp
 								if mode != "decrypt" {
@@ -420,19 +422,19 @@ func draw() {
 							}),
 
 							giu.Style().SetDisabled(mode == "decrypt").To(
-								giu.Button(s("Create")).Size(54, 0).OnClick(func() {
+								giu.Button(s("创建")).Size(54, 0).OnClick(func() {
 									showGenpass = true
 								}),
 							),
 
 							giu.Style().SetDisabled(mode == "decrypt" && !keyfile).To(
 								giu.Row(
-									giu.Button(s("Edit")).Size(54, 0).OnClick(func() {
+									giu.Button(s("编辑")).Size(54, 0).OnClick(func() {
 										showKeyfile = true
 									}),
 									giu.Style().SetDisabled(mode == "decrypt").To(
-										giu.Button(s("Create")).Size(54, 0).OnClick(func() {
-											file, _ := dialog.File().Title(s("Save keyfile as:")).Save()
+										giu.Button(s("创建")).Size(54, 0).OnClick(func() {
+											file, _ := dialog.File().Title(s("保存文件为:")).Save()
 											if file == "" {
 												return
 											}
@@ -487,11 +489,7 @@ func draw() {
 					giu.Style().SetDisabled(password == "").To(
 						giu.Row(
 							giu.Style().SetDisabled(mode == "decrypt").To(
-								giu.Label(s("Confirm password:")),
-							),
-							giu.Dummy(-124, 0),
-							giu.Style().SetDisabled(true).To(
-								giu.Label(s("Custom Argon2:")),
+								giu.Label(s("确认密码:")),
 							),
 						),
 					),
@@ -521,9 +519,6 @@ func draw() {
 									}),
 								),
 							),
-							giu.Style().SetDisabled(true).To(
-								giu.Button(s("W.I.P")).Size(giu.Auto, 0),
-							),
 						),
 					),
 
@@ -537,7 +532,7 @@ func draw() {
 							giu.InputText(&metadata).Size(giu.Auto),
 						),
 
-						giu.Label(s("Advanced:")),
+						giu.Label(s("高级选项:")),
 						giu.Custom(func() {
 							if mode != "decrypt" {
 								giu.Row(
@@ -565,7 +560,7 @@ func draw() {
 							}
 						}),
 
-						giu.Label(s("Save output as:")),
+						giu.Label(s("保存输出为:")),
 						giu.Custom(func() {
 							w, _ := giu.GetAvailableRegion()
 							bw, _ := giu.CalcTextSize(s("Change"))
@@ -576,7 +571,7 @@ func draw() {
 								giu.InputText(&outputFile).Size(dw / dpi / dpi).Flags(giu.InputTextFlagsReadOnly),
 							).Build()
 							giu.SameLine()
-							giu.Button(s("Change")).Size(bw/dpi, 0).OnClick(func() {
+							giu.Button(s("修改")).Size(bw/dpi, 0).OnClick(func() {
 								file, _ := dialog.File().Title(s("Save as:")).Save()
 								if file == "" {
 									return
@@ -613,16 +608,16 @@ func draw() {
 
 								outputFile = file
 							}).Build()
-							giu.Tooltip(s("Save the output with a custom path and name.")).Build()
+							giu.Tooltip(s("使用自定义的保存输出路径和文件名")).Build()
 						}),
 
 						giu.Dummy(0, 2),
 						giu.Separator(),
 						giu.Dummy(0, 3),
 
-						giu.Button(s("Start")).Size(giu.Auto, 34).OnClick(func() {
+						giu.Button(s("开始")).Size(giu.Auto, 34).OnClick(func() {
 							if keyfile && keyfiles == nil {
-								mainStatus = "Please select your keyfiles."
+								mainStatus = "请选择你的秘钥文件"
 								mainStatusColor = color.RGBA{0xff, 0x00, 0x00, 0xff}
 								return
 							}
@@ -647,218 +642,13 @@ func draw() {
 						),
 					),
 				),
-				giu.TabItem(s("Checksum")).Layout(
-					giu.Custom(func() {
-						if giu.IsItemActive() {
-							tab = 1
-						}
-					}),
-					giu.Label(s("Toggle the hashes you would like to generate and drop a file here.")),
-
-					// MD5
-					giu.Custom(func() {
-						giu.Checkbox("MD5:", &md5Selected).OnChange(func() {
-							csMd5 = ""
-						}).Build()
-						giu.SameLine()
-						w, _ := giu.GetAvailableRegion()
-						bw, _ := giu.CalcTextSize(s("Copy"))
-						padding, _ := giu.GetWindowPadding()
-						bw += 2 * padding
-						size := w - bw - padding
-						giu.Dummy(size/dpi, 0).Build()
-						giu.SameLine()
-						giu.Button(s("Copy")+"##md5").Size(bw/dpi, 0).OnClick(func() {
-							clipboard.WriteAll(csMd5)
-						}).Build()
-					}),
-					giu.Style().SetColor(giu.StyleColorBorder, md5Color).To(
-						giu.Style().SetDisabled(true).To(
-							giu.InputText(&csMd5).Size(giu.Auto).Flags(giu.InputTextFlagsReadOnly),
-						),
-					),
-
-					// SHA1
-					giu.Custom(func() {
-						giu.Checkbox("SHA1:", &sha1Selected).OnChange(func() {
-							csSha1 = ""
-						}).Build()
-						giu.SameLine()
-						w, _ := giu.GetAvailableRegion()
-						bw, _ := giu.CalcTextSize(s("Copy"))
-						padding, _ := giu.GetWindowPadding()
-						bw += 2 * padding
-						size := w - bw - padding
-						giu.Dummy(size/dpi, 0).Build()
-						giu.SameLine()
-						giu.Button(s("Copy")+"##sha1").Size(bw/dpi, 0).OnClick(func() {
-							clipboard.WriteAll(csSha1)
-						}).Build()
-					}),
-					giu.Style().SetColor(giu.StyleColorBorder, sha1Color).To(
-						giu.Style().SetDisabled(true).To(
-							giu.InputText(&csSha1).Size(giu.Auto).Flags(giu.InputTextFlagsReadOnly),
-						),
-					),
-
-					// SHA256
-					giu.Custom(func() {
-						giu.Checkbox("SHA256:", &sha256Selected).OnChange(func() {
-							csSha256 = ""
-						}).Build()
-						giu.SameLine()
-						w, _ := giu.GetAvailableRegion()
-						bw, _ := giu.CalcTextSize(s("Copy"))
-						padding, _ := giu.GetWindowPadding()
-						bw += 2 * padding
-						size := w - bw - padding
-						giu.Dummy(size/dpi, 0).Build()
-						giu.SameLine()
-						giu.Button(s("Copy")+"##sha256").Size(bw/dpi, 0).OnClick(func() {
-							clipboard.WriteAll(csSha256)
-						}).Build()
-					}),
-					giu.Style().SetColor(giu.StyleColorBorder, sha256Color).To(
-						giu.Style().SetDisabled(true).To(
-							giu.InputText(&csSha256).Size(giu.Auto).Flags(giu.InputTextFlagsReadOnly),
-						),
-					),
-
-					// SHA3-256
-					giu.Custom(func() {
-						giu.Checkbox("SHA3:", &sha3Selected).OnChange(func() {
-							csSha3 = ""
-						}).Build()
-						giu.SameLine()
-						w, _ := giu.GetAvailableRegion()
-						bw, _ := giu.CalcTextSize(s("Copy"))
-						padding, _ := giu.GetWindowPadding()
-						bw += 2 * padding
-						size := w - bw - padding
-						giu.Dummy(size/dpi, 0).Build()
-						giu.SameLine()
-						giu.Button(s("Copy")+"##sha3").Size(bw/dpi, 0).OnClick(func() {
-							clipboard.WriteAll(csSha3)
-						}).Build()
-					}),
-					giu.Style().SetColor(giu.StyleColorBorder, sha3Color).To(
-						giu.Style().SetDisabled(true).To(
-							giu.InputText(&csSha3).Size(giu.Auto).Flags(giu.InputTextFlagsReadOnly),
-						),
-					),
-
-					// BLAKE2b
-					giu.Custom(func() {
-						giu.Checkbox("BLAKE2b:", &blake2bSelected).OnChange(func() {
-							csBlake2b = ""
-						}).Build()
-						giu.SameLine()
-						w, _ := giu.GetAvailableRegion()
-						bw, _ := giu.CalcTextSize(s("Copy"))
-						padding, _ := giu.GetWindowPadding()
-						bw += 2 * padding
-						size := w - bw - padding
-						giu.Dummy(size/dpi, 0).Build()
-						giu.SameLine()
-						giu.Button(s("Copy")+"##blake2b").Size(bw/dpi, 0).OnClick(func() {
-							clipboard.WriteAll(csBlake2b)
-						}).Build()
-					}),
-					giu.Style().SetColor(giu.StyleColorBorder, blake2bColor).To(
-						giu.Style().SetDisabled(true).To(
-							giu.InputText(&csBlake2b).Size(giu.Auto).Flags(giu.InputTextFlagsReadOnly),
-						),
-					),
-
-					// BLAKE2s
-					giu.Custom(func() {
-						giu.Checkbox("BLAKE2s:", &blake2sSelected).OnChange(func() {
-							csBlake2s = ""
-						}).Build()
-						giu.SameLine()
-						w, _ := giu.GetAvailableRegion()
-						bw, _ := giu.CalcTextSize(s("Copy"))
-						padding, _ := giu.GetWindowPadding()
-						bw += 2 * padding
-						size := w - bw - padding
-						giu.Dummy(size/dpi, 0).Build()
-						giu.SameLine()
-						giu.Button(s("Copy")+"##blake2s").Size(bw/dpi, 0).OnClick(func() {
-							clipboard.WriteAll(csBlake2s)
-						}).Build()
-					}),
-					giu.Style().SetColor(giu.StyleColorBorder, blake2sColor).To(
-						giu.Style().SetDisabled(true).To(
-							giu.InputText(&csBlake2s).Size(giu.Auto).Flags(giu.InputTextFlagsReadOnly),
-						),
-					),
-
-					// Input entry for validating a checksum
-					giu.Row(
-						giu.Label(s("Validate a checksum:")),
-						giu.Custom(func() {
-							bw, _ := giu.CalcTextSize(s("Paste"))
-							padding, _ := giu.GetWindowPadding()
-							bw += 2 * padding
-							giu.Button(s("Paste")).Size(bw/dpi, 0).OnClick(func() {
-								tmp, _ := clipboard.ReadAll()
-								csValidate = tmp
-								md5Color = color.RGBA{0x00, 0x00, 0x00, 0x00}
-								sha1Color = color.RGBA{0x00, 0x00, 0x00, 0x00}
-								sha256Color = color.RGBA{0x00, 0x00, 0x00, 0x00}
-								sha3Color = color.RGBA{0x00, 0x00, 0x00, 0x00}
-								blake2bColor = color.RGBA{0x00, 0x00, 0x00, 0x00}
-								blake2sColor = color.RGBA{0x00, 0x00, 0x00, 0x00}
-								if csValidate == "" {
-									return
-								}
-								csValidate = strings.ToLower(csValidate)
-								if csValidate == csMd5 {
-									md5Color = color.RGBA{0x00, 0xff, 0x00, 0xff}
-								} else if csValidate == csSha1 {
-									sha1Color = color.RGBA{0x00, 0xff, 0x00, 0xff}
-								} else if csValidate == csSha256 {
-									sha256Color = color.RGBA{0x00, 0xff, 0x00, 0xff}
-								} else if csValidate == csSha3 {
-									sha3Color = color.RGBA{0x00, 0xff, 0x00, 0xff}
-								} else if csValidate == csBlake2b {
-									blake2bColor = color.RGBA{0x00, 0xff, 0x00, 0xff}
-								} else if csValidate == csBlake2s {
-									blake2sColor = color.RGBA{0x00, 0xff, 0x00, 0xff}
-								}
-								giu.Update()
-							}).Build()
-						}),
-						giu.Custom(func() {
-							bw, _ := giu.CalcTextSize(s("Paste"))
-							padding, _ := giu.GetWindowPadding()
-							bw += 2 * padding
-							giu.Button(s("Clear")).Size(bw/dpi, 0).OnClick(func() {
-								csValidate = ""
-								md5Color = color.RGBA{0x00, 0x00, 0x00, 0x00}
-								sha1Color = color.RGBA{0x00, 0x00, 0x00, 0x00}
-								sha256Color = color.RGBA{0x00, 0x00, 0x00, 0x00}
-								sha3Color = color.RGBA{0x00, 0x00, 0x00, 0x00}
-								blake2bColor = color.RGBA{0x00, 0x00, 0x00, 0x00}
-								blake2sColor = color.RGBA{0x00, 0x00, 0x00, 0x00}
-							}).Build()
-						}),
-					),
-					giu.Style().SetDisabled(true).To(
-						giu.InputText(&csValidate).Size(giu.Auto),
-					),
-
-					// Progress bar
-					giu.Label(s("Progress:")),
-					giu.ProgressBar(csProgress).Size(giu.Auto, 0),
-				),
-				giu.TabItem(s("About")).Layout(
+				giu.TabItem(s("关于")).Layout(
 					giu.Custom(func() {
 						if giu.IsItemActive() {
 							tab = 2
 						}
 					}),
-					giu.Label(fmt.Sprintf(s("Picocrypt %s, created by Evan Su (https://evansu.cc/)."), version)),
+					giu.Label(fmt.Sprintf(s("威密 %s, 由Thoughtworks未济实验室编写，picocrypt 原作者为Evan Su (https://evansu.cc/)."), version)),
 					giu.Label(s("Released under a GNU GPL v3 License.")),
 					giu.Label(s("A warm thank you to all the people listed below.")),
 					giu.Label(s("Donors:")),
@@ -921,8 +711,6 @@ func onDrop(names []string) {
 		}
 		keyfiles = tmp
 		if len(keyfiles) == 1 {
-			keyfilePrompt = s("Using 1 keyfile.")
-		} else {
 			keyfilePrompt = fmt.Sprintf(s("Using %d keyfiles."), len(keyfiles))
 		}
 		return
@@ -966,12 +754,12 @@ func onDrop(names []string) {
 			if strings.HasSuffix(names[0], ".pcv") || isSplit {
 				//var err error
 				mode = "decrypt"
-				inputLabel = name + s(" (will decrypt)")
+				inputLabel = name + s(" (将会解密)")
 				metadataPrompt = s("Metadata (read-only):")
 				metadataDisabled = true
 
 				if isSplit {
-					inputLabel = name + s(" (will recombine and decrypt)")
+					inputLabel = name + s(" (将会重组并解密)")
 					ind := strings.Index(names[0], ".pcv")
 					names[0] = names[0][:ind+4]
 					inputFile = names[0]
@@ -1041,13 +829,13 @@ func onDrop(names []string) {
 					for i := 0; i < metadataLength*3; i += 3 {
 						t, err := rsDecode(rs1, tmp[i:i+3])
 						if err != nil {
-							metadata = s("Metadata is corrupted.")
+							metadata = s("元数据已损坏")
 							break
 						}
 						metadata += string(t)
 					}
 				} else {
-					metadata = s("Metadata is corrupted.")
+					metadata = s("元数据已损坏")
 				}
 
 				flags := make([]byte, 15)
@@ -1055,23 +843,23 @@ func onDrop(names []string) {
 				fin.Close()
 				flags, err = rsDecode(rs5, flags)
 				if err != nil {
-					mainStatus = "Input file is corrupt and cannot be decrypted."
+					mainStatus = "输入文件已损坏且无法解密"
 					mainStatusColor = color.RGBA{0xff, 0x00, 0x00, 0xff}
 					return
 				}
 
 				if flags[1] == 1 {
 					keyfile = true
-					keyfilePrompt = s("Keyfiles required.")
+					keyfilePrompt = s("需要秘钥文件")
 				} else {
-					keyfilePrompt = s("Not applicable.")
+					keyfilePrompt = s("不适用的秘钥文件")
 				}
 				if flags[2] == 1 {
 					keyfileOrderMatters = true
 				}
 			} else {
 				mode = "encrypt"
-				inputLabel = name + s(" (will encrypt)")
+				inputLabel = name + s(" (将会加密)")
 				inputFile = names[0]
 				outputFile = names[0] + ".pcv"
 			}
@@ -1099,18 +887,18 @@ func onDrop(names []string) {
 		}
 
 		if folders == 0 {
-			inputLabel = fmt.Sprintf(s("%d files selected."), files)
+			inputLabel = fmt.Sprintf(s("%d 个文件已选择"), files)
 		} else if files == 0 {
-			inputLabel = fmt.Sprintf(s("%d folders selected."), files)
+			inputLabel = fmt.Sprintf(s("%d 个文件夹已选择"), files)
 		} else {
 			if files == 1 && folders > 1 {
-				inputLabel = fmt.Sprintf(s("1 file and %d folders selected."), folders)
+				inputLabel = fmt.Sprintf(s("1 个文件和 %d 文件夹已选择"), folders)
 			} else if folders == 1 && files > 1 {
-				inputLabel = fmt.Sprintf(s("%d files and 1 folder selected."), files)
+				inputLabel = fmt.Sprintf(s("%d 个文件和 1 个文件夹已选择"), files)
 			} else if folders == 1 && files == 1 {
-				inputLabel = s("1 file and 1 folder selected.")
+				inputLabel = s("1 个文件和 1 个文件夹已选择.")
 			} else {
-				inputLabel = fmt.Sprintf(s("%d files and %d folders selected."), files, folders)
+				inputLabel = fmt.Sprintf(s("%d 个文件和 %d 个文件夹已选择"), files, folders)
 			}
 		}
 
@@ -1133,8 +921,8 @@ func onDrop(names []string) {
 }
 
 func work() {
-	popupStatus = s("Starting...")
-	mainStatus = "Working..."
+	popupStatus = s("启动...")
+	mainStatus = "工作中..."
 	mainStatusColor = color.RGBA{0xff, 0xff, 0xff, 0xff}
 	working = true
 	padded := false
@@ -1152,9 +940,9 @@ func work() {
 
 	if mode == "encrypt" {
 		if compress {
-			popupStatus = s("Compressing files...")
+			popupStatus = s("压缩文件...")
 		} else {
-			popupStatus = s("Combining files...")
+			popupStatus = s("合并文件...")
 		}
 
 		// "Tar" files together (a .zip file with no compression)
@@ -1168,7 +956,7 @@ func work() {
 
 			file, err := os.Create(inputFile)
 			if err != nil {
-				mainStatus = "Access denied by operating system."
+				mainStatus = "操作系统拒绝访问"
 				mainStatusColor = color.RGBA{0xff, 0x00, 0x00, 0xff}
 				return
 			}
@@ -1179,7 +967,7 @@ func work() {
 					w.Close()
 					file.Close()
 					os.Remove(inputFile)
-					mainStatus = "Operation cancelled by user."
+					mainStatus = "用户已取消该操作"
 					mainStatusColor = color.RGBA{0xff, 0xff, 0xff, 0xff}
 					return
 				}
@@ -1213,7 +1001,7 @@ func work() {
 	}
 
 	if recombine {
-		popupStatus = s("Recombining file...")
+		popupStatus = s("重组文件...")
 		total := 0
 
 		for {
@@ -1253,7 +1041,7 @@ func work() {
 
 	// XChaCha20's max message size is 256 GiB
 	if total > 256*1073741824 {
-		mainStatus = "Total size is larger than 256 GiB, XChaCha20's limit."
+		mainStatus = "总大小超过 256 GiB, XChaCha20 加密的最大长度."
 		mainStatusColor = color.RGBA{0xff, 0x00, 0x00, 0xff}
 		return
 	}
@@ -1261,7 +1049,7 @@ func work() {
 	// Open input file in read-only mode
 	fin, err := os.Open(inputFile)
 	if err != nil {
-		mainStatus = "Access denied by operating system."
+		mainStatus = "操作系统拒绝访问"
 		mainStatusColor = color.RGBA{0xff, 0x00, 0x00, 0xff}
 		return
 	}
@@ -1270,13 +1058,13 @@ func work() {
 
 	// If encrypting, generate values; if decrypting, read values from file
 	if mode == "encrypt" {
-		popupStatus = s("Generating values...")
+		popupStatus = s("生成数据...")
 		giu.Update()
 
 		var err error
 		fout, err = os.Create(outputFile)
 		if err != nil {
-			mainStatus = "Access denied by operating system."
+			mainStatus = "操作系统拒绝访问"
 			mainStatusColor = color.RGBA{0xff, 0x00, 0x00, 0xff}
 			return
 		}
@@ -1363,7 +1151,7 @@ func work() {
 		var err9 error
 		var err10 error
 
-		popupStatus = s("Reading values...")
+		popupStatus = s("读取数据...")
 		giu.Update()
 
 		version := make([]byte, 15)
@@ -1418,7 +1206,7 @@ func work() {
 			if keep {
 				kept = true
 			} else {
-				mainStatus = "The header is corrupt and the input file cannot be decrypted."
+				mainStatus = "文件头已损坏，无法解密"
 				mainStatusColor = color.RGBA{0xff, 0x00, 0x00, 0xff}
 				fin.Close()
 				return
@@ -1426,7 +1214,7 @@ func work() {
 		}
 	}
 
-	popupStatus = s("Deriving key...")
+	popupStatus = s("派生秘钥...")
 	progress = 0
 	progressInfo = ""
 	giu.Update()
@@ -1454,7 +1242,7 @@ func work() {
 	}
 
 	if !working {
-		mainStatus = "Operation cancelled by user."
+		mainStatus = "操作已被用户取消"
 		mainStatusColor = color.RGBA{0xff, 0xff, 0xff, 0xff}
 		if mode == "encrypt" && (len(allFiles) > 1 || len(onlyFolders) > 0) {
 			os.Remove(outputFile)
@@ -1531,12 +1319,12 @@ func work() {
 			} else {
 				fin.Close()
 				if !keyCorrect {
-					mainStatus = "The provided password is incorrect."
+					mainStatus = "输入的密码不正确"
 				} else {
 					if keyfileOrderMatters {
-						mainStatus = "Incorrect keyfiles and/or order."
+						mainStatus = "不正确的秘钥文件/顺序"
 					} else {
-						mainStatus = "Incorrect keyfiles."
+						mainStatus = "不正确的秘钥文件"
 					}
 				}
 				mainStatusColor = color.RGBA{0xff, 0x00, 0x00, 0xff}
@@ -1551,7 +1339,7 @@ func work() {
 		var err error
 		fout, err = os.Create(outputFile)
 		if err != nil {
-			mainStatus = "Access denied by operating system."
+			mainStatus = "操作系统拒绝访问"
 			mainStatusColor = color.RGBA{0xff, 0x00, 0x00, 0xff}
 			return
 		}
@@ -1592,7 +1380,7 @@ func work() {
 
 	for {
 		if !working {
-			mainStatus = "Operation cancelled by user."
+			mainStatus = "操作已被用户取消"
 			mainStatusColor = color.RGBA{0xff, 0xff, 0xff, 0xff}
 			fin.Close()
 			fout.Close()
@@ -1662,7 +1450,7 @@ func work() {
 							if keep {
 								kept = true
 							} else {
-								mainStatus = "The input file is too corrupted to decrypt."
+								mainStatus = "文件已损坏无法解密"
 								mainStatusColor = color.RGBA{0xff, 0x00, 0x00, 0xff}
 								fin.Close()
 								fout.Close()
@@ -1684,7 +1472,7 @@ func work() {
 							if keep {
 								kept = true
 							} else {
-								mainStatus = "The input file is too corrupted to decrypt."
+								mainStatus = "文件已损坏无法解密"
 								mainStatusColor = color.RGBA{0xff, 0x00, 0x00, 0xff}
 								fin.Close()
 								fout.Close()
@@ -1700,7 +1488,7 @@ func work() {
 						if keep {
 							kept = true
 						} else {
-							mainStatus = "The input file is too corrupted to decrypt."
+							mainStatus = "文件已损坏无法解密"
 							mainStatusColor = color.RGBA{0xff, 0x00, 0x00, 0xff}
 							fin.Close()
 							fout.Close()
@@ -1741,7 +1529,7 @@ func work() {
 		}
 
 		progressInfo = fmt.Sprintf("%.2f%%", progress*100)
-		popupStatus = fmt.Sprintf(s("Working at %.2f MB/s (ETA: %s)"), speed, humanize(eta))
+		popupStatus = fmt.Sprintf(s("速率 %.2f MB/s (预计时间: %s)"), speed, humanize(eta))
 		giu.Update()
 	}
 
@@ -1771,7 +1559,7 @@ func work() {
 	// Split files into chunks
 	if split {
 		var splitted []string
-		popupStatus = s("Splitting file...")
+		popupStatus = s("分割文件...")
 		stat, _ := os.Stat(outputFile)
 		size := stat.Size()
 		finished := 0
@@ -1800,7 +1588,7 @@ func work() {
 				if !working {
 					fin.Close()
 					fout.Close()
-					mainStatus = "Operation cancelled by user."
+					mainStatus = "操作已被用户取消"
 					mainStatusColor = color.RGBA{0xff, 0xff, 0xff, 0xff}
 
 					// If user cancels, remove the unfinished files
@@ -1841,7 +1629,7 @@ func work() {
 
 	if deleteWhenDone {
 		progressInfo = ""
-		popupStatus = s("Deleted files...")
+		popupStatus = s("删除文件...")
 		giu.Update()
 		if mode == "decrypt" {
 			if recombine {
@@ -1871,10 +1659,10 @@ func work() {
 
 	// If user chose to keep a corrupted/modified file, let them know
 	if kept {
-		mainStatus = "The input file is corrupted and/or modified. Please be careful."
+		mainStatus = "请注意，文件已损坏或被修改过"
 		mainStatusColor = color.RGBA{0xff, 0xff, 0x00, 0xff}
 	} else {
-		mainStatus = "Completed."
+		mainStatus = "已完成"
 		mainStatusColor = color.RGBA{0x00, 0xff, 0x00, 0xff}
 	}
 
@@ -1882,12 +1670,12 @@ func work() {
 	working = false
 	kept = false
 	key = nil
-	popupStatus = s("Ready.")
+	popupStatus = s("准备就绪")
 }
 
 // This function is run if an issue occurs during decryption
 func broken() {
-	mainStatus = "The input file is either corrupted or intentionally modified."
+	mainStatus = "文件已损坏或被修改过"
 	mainStatusColor = color.RGBA{0xff, 0x00, 0x00, 0xff}
 	if recombine {
 		os.Remove(inputFile)
@@ -2007,15 +1795,15 @@ func resetUI() {
 	onlyFiles = nil
 	onlyFolders = nil
 	allFiles = nil
-	inputLabel = s("Drop files and folders into this window.")
+	inputLabel = s("拖动文件或文件夹到本窗口")
 	password = ""
 	cPassword = ""
 	keyfiles = nil
 	keyfile = false
 	keyfileOrderMatters = false
-	keyfilePrompt = s("None selected.")
+	keyfilePrompt = s("未选择")
 	metadata = ""
-	metadataPrompt = "Metadata:"
+	metadataPrompt = "元数据:"
 	metadataDisabled = false
 	keep = false
 	reedsolo = false
@@ -2029,7 +1817,7 @@ func resetUI() {
 	outputFile = ""
 	progress = 0
 	progressInfo = ""
-	mainStatus = "Ready."
+	mainStatus = "准备就绪."
 	mainStatusColor = color.RGBA{0xff, 0xff, 0xff, 0xff}
 	giu.Update()
 }
@@ -2120,7 +1908,7 @@ func s(term string) string {
 	for _, i := range locales {
 		if i.iso == selectedLocale {
 			for _, j := range locales {
-				if j.iso == "en" {
+				if j.iso == "zh" {
 					for k, l := range j.data {
 						if l == term {
 							return i.data[k]
@@ -2166,7 +1954,7 @@ func main() {
 	giu.SetDefaultFontFromBytes(font, 18)
 
 	// Create the master window
-	window = giu.NewMasterWindow("Picocrypt", 442, 532, giu.MasterWindowFlagsNotResizable)
+	window = giu.NewMasterWindow("威密", 442, 532, giu.MasterWindowFlagsNotResizable)
 	dialog.Init()
 
 	// Set window icon
