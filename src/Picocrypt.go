@@ -1971,21 +1971,6 @@ func main() {
 	// Set universal DPI
 	dpi = giu.Context.GetPlatform().GetContentScale()
 
-	// Start a goroutine to check if a newer version is available
-	go func() {
-		v, err := http.Get("https://raw.githubusercontent.com/HACKERALERT/Picocrypt/main/internals/version.txt")
-		if err == nil {
-			body, err := io.ReadAll(v.Body)
-			v.Body.Close()
-			if err == nil {
-				if string(body[:5]) != version {
-					mainStatus = "A newer version is available."
-					mainStatusColor = color.RGBA{0x00, 0xff, 0x00, 0xff}
-				}
-			}
-		}
-	}()
-
 	// Start the UI
 	window.Run(draw)
 }
