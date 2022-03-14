@@ -27,7 +27,6 @@ import (
 	"io"
 	"math"
 	"math/big"
-	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
